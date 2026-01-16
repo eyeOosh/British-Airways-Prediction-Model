@@ -1,0 +1,131 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, roc_auc_score, classification_report, confusion_matrix
+import os
+
+# data frame created from customer_booking.csv
+df = pd.read_csv(r"C:\Users\aayus\OneDrive\Documents\Python Code Files\flightBookings\customer_booking.csv", encoding="ISO-8859-1")
+
+#defining weekend and weekday
+df["is_weekend"] = df["flight_day"].isin(
+    ["Saturday", "Sunday"]
+).astype(int)
+
+#defining buckets for purchase lead (int) into purchase lead (enum)
+df["purchase_lead_bucket"] = pd.cut(
+    df["purchase_lead"],
+    bins=[-1, 7, 30, 90, 365],
+    labels=["last_minute", "short", "medium", "long"]
+)
+
+#category columns
+categorical_cols = [
+    "sales_channel",
+    "trip_type",
+    "route",
+    "booking_origin",
+    "flight_day",
+    "purchase_lead_bucket"
+]
+
+#encode data
+df_encoded = pd.get_dummies(
+    df,
+    columns=categorical_cols,
+    drop_first=True
+)
+
+#Training X dataset should not include outcome (booking complete) in Y
+X = df_encoded.drop(columns=["booking_complete"])
+y = df_encoded["booking_complete"]
+
+#Train Test Split
+trainRandomSeed = 123
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state= trainRandomSeed,
+    stratify=y
+)
+
+#Random Forest made here
+rfRandom = 123
+rf = RandomForestClassifier(
+    n_estimators=200,
+    max_depth=None,
+    random_state = rfRandom,
+    class_weight="balanced"
+)
+
+#training the model here
+rf.fit(X_train, y_train)
+
+#Original predictions
+y_pred = rf.predict(X_test)
+y_prob = rf.predict_proba(X_test)[:, 1]
+
+#Confusion matrix of the original predictions
+cm = confusion_matrix(y_test, y_pred)
+
+#create a new threshold
+threshold = 0.20
+y_pred_25 = (y_prob >= threshold).astype(int)
+
+#Importances list
+importances = pd.Series(
+    rf.feature_importances_,
+    index=X_train.columns
+).sort_values(ascending=False)
+
+#Print program info
+print("\n----------PROGRAM INFO----------")
+print("Created by Aayush Kumar")
+print("Last updated: 1/5/26")
+#print("Current Working Directory:", os.getcwd())
+print("Database shape: ", df.shape)
+
+print("\n----Booking Complete Count and Percentage----")
+print(df["booking_complete"].value_counts())
+print("\n", df["booking_complete"].value_counts(normalize=True))
+
+print("\n----Training dataset shape and seeds----")
+print(X_train.shape, X_test.shape)
+
+print("Training Random Seed: ", trainRandomSeed)
+print("RandomForest Random Seed: ", rfRandom)
+
+print("\n----Feature Importances----")
+print(importances.head(10))
+
+print("\n----Random Forest Model Predictions----")
+print("Predicted bookings:", y_pred.sum())
+print("Actual bookings:", y_test.sum())
+
+print("\n----Confusion Matrix----")
+print(cm)
+
+print("\n----Model Evaluation Metrics----")
+print(classification_report(y_test, y_pred))
+
+#print("\nLowered Metrics Threshold to 0.20")
+print(f"\n----Confusion Matrix ({threshold:.2f})----")
+print(confusion_matrix(y_test, y_pred_25))
+print(f"\n----Model Evaluatoin Metrics ({threshold:.2f})----")
+print(classification_report(y_test, y_pred_25))
+
+print("----Test with n thresholds----")
+#Test with different thresholds
+for t in [0.15, 0.2, 0.25, 0.3]:
+    y_pred_t = (y_prob >= t).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y_test, y_pred_t).ravel()
+    recall = tp / (tp + fn)
+    print("\n--New Trial with ", t)
+    print(f"Threshold={t:.2f} | Recall={recall:.2f} | FN={fn} | FP={fp}")
+    print("Predicted bookings", y_pred_t.sum())
+    print("Actual bookings: ", y_test.sum())
+
+print("\n---------END PROGRAM---------")
